@@ -3,5 +3,6 @@
 if [[ $RBUFFER == *$'\n'* ]]; then
   builtin zle down-line
 else
+  # TODO: #411 If in history mode, alias the `menuselect` keymap to our history keymap.
   builtin zle menu-select -w
 fi

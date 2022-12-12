@@ -13,10 +13,13 @@ ${0}.context() {
 ${0}() {
   local -P lbuffer="$LBUFFER" rbuffer="$RBUFFER"
   local -P keymap_menuselect="$( builtin bindkey -M menuselect -L )"
+  # local -Pa leftright=(
+  #     ${(M)${(f@)"$( bindkey -LM menuselect )"}:#*\" *ward-char}
+  #            m
+
+  # )
   {
-    builtin bindkey -M menuselect -s \
-        '^R' '^_^_^R' \
-        '^S' '^_^_^S'
+    # TODO: #411 Look up in the current keymap which keys actually point to these widgets.
     builtin bindkey -M menuselect \
         '\e[D' .backward-char \
         '\eOD' .backward-char \
@@ -35,7 +38,7 @@ ${0}() {
     builtin zle _history_search
 
   } always {
-    builtin bindkey -M menuselect -r '^R' '^S' '\e'{\[,O}{D,C}
+    builtin bindkey -M menuselect -r '\e'{\[,O}{D,C}
     eval "$keymap_menuselect"
     if [[ $BUFFER == $lcontext$rcontext ]] then
       LBUFFER="$lbuffer"

@@ -37,6 +37,7 @@ _autocomplete.history_lines() {
     fi
     _comp_colors=( '(history-lines)=[[:space:]]#(#b)(<->) *=0=2' "$_comp_colors[@]" )
   else
+    # TODO: Maybe set a smaller upper error limit, like max( 2, $#words[CURRENT] / 3 ).
     local -PaU queries=() err=( '(#ia'{0..$(( $#words[CURRENT] ))}')' )
     local -P query lbuffer= rbuffer=
     if [[ $WIDGET == (|*-)search(|-*) ]]; then
@@ -52,6 +53,9 @@ _autocomplete.history_lines() {
       rbuffer="${(b)QISUFFIX}$rbuffer"
       queries=( $lbuffer\*\($^err${words[CURRENT]}\)\*$rbuffer )
     fi
+
+    # TODO: #459 Cut the history into smaller pieces, for example, max 500 lines.
+    # Maybe then iterate to fill up the menu to max lines.
     if [[ -o histfindnodups ]]; then
       local -Pa numbers=()
       for query in $queries[@]; do

@@ -92,8 +92,13 @@ EOF
     fi
   ) &|
 
+
+  # Workaround: Some other plugins rely on patching _main_complete, which can interfere with our completion.
+  functions[.autocomplete.tmp]="$functions[_main_complete]"
   .autocomplete.patch _main_complete
-  _main_complete() {
+  functions[_main_complete]="$functions[.autocomplete.tmp]"
+
+  _autocomplete.main_complete() {
     local -i _autocomplete__reserved_lines=0
     local -Pi ret=1
     unset _autocomplete__partial_list _autocomplete__unambiguous
@@ -106,7 +111,7 @@ EOF
     [[ -v functions[compadd] ]] ||
         functions[compadd]=$functions[.autocomplete.compadd]
 
-    local +h -a comppostfuncs=( _autocomplete._main_complete.post "$comppostfuncs[@]" )
+    local +h -a comppostfuncs=( _autocomplete.main_complete.post "$comppostfuncs[@]" )
     .autocomplete._main_complete "$@"
   }
 
@@ -122,7 +127,7 @@ EOF
     fi
   }
 
-  _autocomplete._main_complete.post() {
+  _autocomplete.main_complete.post() {
     [[ $WIDGET != _complete_help ]] &&
         unfunction compadd 2> /dev/null
     _autocomplete.unambiguous

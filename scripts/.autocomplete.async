@@ -5,7 +5,9 @@ zmodload -F zsh/system b:sysopen p:sysparams
 zmodload -F zsh/zselect b:zselect
 zmodload -F zsh/terminfo b:echoti p:terminfo
 zmodload -F zsh/zutil b:zparseopts
-builtin autoload -RUz add-zle-hook-widget
+builtin autoload -RUz \
+    add-zle-hook-widget \
+    is-at-least
 
 typeset -gHi _autocomplete__buffer_start_line=1
 typeset -g ZSH_AUTOSUGGEST_USE_ASYNC=yes
@@ -48,8 +50,6 @@ builtin zle -N history-incremental-search-forward .autocomplete.async.history-in
       _zsh_autosuggest_suggest "$@"
     }
   fi
-
-  .autocomplete.patch _message
 
   add-zle-hook-widget line-init .autocomplete.async.read-cursor-position
   add-zle-hook-widget line-init .autocomplete.async.reset-context
@@ -149,7 +149,9 @@ builtin zle -N history-incremental-search-forward .autocomplete.async.history-in
   [[ -v functions[_zsh_autosuggest_highlight_apply] ]] &&
       _zsh_autosuggest_highlight_apply
 
-  [[ $LASTWIDGET == .autocomplete.async.complete.fd-widget ]] &&
+  # Prevent crash in Zsh < 5.9 when Autocomplete causes line to be redrawn.
+  ! is-at-least 5.9 &&
+        [[ $LASTWIDGET == .autocomplete.async.complete.fd-widget ]] &&
       return
 
   .autocomplete.async.stop
@@ -164,8 +166,15 @@ builtin zle -N history-incremental-search-forward .autocomplete.async.history-in
         (_complete_help|list-expand|(|.)(describe-key-briefly|what-cursor-position|where-is)) ]] &&
       return
 
-  [[ $_lastcomp[insert] == *unambiguous ]] &&
-      builtin zle .auto-suffix-retain  # Make the cursor stay in the right place.
+  [[ $KEYS == ([\ -+*]|$'\e\t') ]] &&
+      builtin zle -Rc
+
+  if [[ $_lastcomp[insert] == *unambiguous ]]; then
+    local -a flag=()
+    is-at-least 5.9 &&
+        flag=( -f nolast )
+    builtin zle $flag .auto-suffix-retain  # Make the cursor stay in the right place.
+  fi
 
   .autocomplete.async.start
   return 0
@@ -190,6 +199,8 @@ builtin zle -N history-incremental-search-forward .autocomplete.async.history-in
 }
 
 .autocomplete.async.start() {
+  # TODO: Implement Roman's suggestion, but with a separate timeout thread.
+
   local fd=
   sysopen -r -o cloexec -u fd <(
     typeset -F SECONDS=0
@@ -210,7 +221,7 @@ builtin zle -N history-incremental-search-forward .autocomplete.async.history-in
     local -F min_delay=
     builtin zstyle -s :autocomplete: min-delay min_delay ||
         min_delay=0.05
-    
+
     # Directly using $(( [#10] 100 * max( 0, min_delay - SECONDS ) )) leads to 0
     # in Zsh >= 5.9, as the result of the max call is converted to an integer.
     # See https://github.com/marlonrichert/zsh-autocomplete/issues/441
@@ -313,6 +324,8 @@ log_functions+=( .autocomplete.async.pty.zle-widget.inner )
     local curcontext=${curcontext:-list-choices:::}
     unset 'compstate[vared]'
 
+    .autocomplete.patch _message
+
     _message() {
       compadd() {
         typeset -gHa _autocomplete__comp_mesg=( "$@" )
@@ -328,7 +341,7 @@ log_functions+=( .autocomplete.async.pty.zle-widget.inner )
     }
 
     local +h -a comppostfuncs=( .autocomplete.async.pty.message )
-    _main_complete
+    _autocomplete.main_complete
   } always {
     typeset -gHi _autocomplete__list_lines=$compstate[list_lines]
   }
@@ -382,8 +395,8 @@ log_functions+=( .autocomplete.async.pty.completion-widget.inner )
     .autocomplete.async.stop
   fi
   return 0
-} 2>>| $_autocomplete__log
-log_functions+=( .autocomplete.async.complete.fd-widget.inner )
+} #2>>| $_autocomplete__log
+#log_functions+=( .autocomplete.async.complete.fd-widget.inner )
 
 .autocomplete.async.sufficient-input() {
   # Don't check the input if we're not doing normal autocompletion.
@@ -392,7 +405,7 @@ log_functions+=( .autocomplete.async.complete.fd-widget.inner )
 
   local min_input=
   builtin zstyle -s :autocomplete:list-choices min-input min_input ||
-      min_input=0
+      min_input=1
   local ignored=
   builtin zstyle -s :autocomplete:list-choices ignored-input ignored
   if (( ${#words[@]} == 1 && ${#words[CURRENT]} < min_input )) ||
@@ -437,7 +450,7 @@ log_functions+=( .autocomplete.async.complete.fd-widget.inner )
         .1 * _seconds_ + .9 * _autocomplete__async_avg_duration
     ))
     if [[ -n $curcontext ]]; then
-      _main_complete
+      _autocomplete.main_complete
     else
       local curcontext=list-choices:::
       .autocomplete.async.list-choices.main-complete
@@ -455,7 +468,7 @@ log_functions+=( .autocomplete.async.list-choices.completion-widget )
 
 .autocomplete.async.list-choices.post() {
   [[ -v _autocomplete__partial_list ]] &&
-      builtin compadd -J -last- -x '%F{0}%K{14}(MORE)%f%k'
+      builtin compadd -J -last- -x '%F{0}%K{12}(MORE)%f%k'
   compstate[insert]=
   unset MENUSELECT MENUMODE
 }
@@ -475,7 +488,7 @@ log_functions+=( .autocomplete.async.list-choices.completion-widget )
       functions[compadd]=$functions[.autocomplete.async.compadd]
       # functions -T compadd .autocomplete.compadd #_describe
     } "$@"
-    _main_complete "$@"
+    _autocomplete.main_complete "$@"
   } always {
     unfunction compadd comptags 2> /dev/null
   }
